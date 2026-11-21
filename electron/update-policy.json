@@ -1,0 +1,1 @@
+{"enabled":false,"reason":"Signing, notarization and authenticated private delivery are not verified","channel":"private-stable","feedUrl":null,"requireCodeSignature":true,"requireNotarization":true,"allowDowngrade":false,"embeddedLongLivedToken":false}

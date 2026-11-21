@@ -1,0 +1,12 @@
+node_modules/
+dist/
+release/
+*.log
+
+.openai/
+.env*
+*.pem
+*.p12
+*.pfx
+records.json*
+shortcut.json*

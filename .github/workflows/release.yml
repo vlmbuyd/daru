@@ -1,0 +1,42 @@
+name: macOS candidate
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run pack:mac
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: daru-unsigned-mac-candidate
+          path: release/*.*
+          retention-days: 7
+  release:
+    needs: build
+    if: vars.DARU_RELEASE_ENABLED == 'true'
+    environment: release-review
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: daru-unsigned-mac-candidate
+          path: release
+      - name: Create draft only (unsigned QA candidate)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release create "$GITHUB_REF_NAME" release/* --draft --title "Daru $GITHUB_REF_NAME - unsigned QA candidate" --notes "Unsigned test candidate. No production distribution or automatic update."
