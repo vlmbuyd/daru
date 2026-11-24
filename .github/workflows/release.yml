@@ -25,7 +25,7 @@ jobs:
           retention-days: 7
   release:
     needs: build
-    if: vars.DARU_RELEASE_ENABLED == 'true'
+    if: vars.DARU_RELEASE_ENABLED == 'true' && vars.DARU_SIGNED_RELEASE_ENABLED != 'true'
     environment: release-review
     runs-on: ubuntu-latest
     permissions:
@@ -40,3 +40,51 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: gh release create "$GITHUB_REF_NAME" release/* --draft --title "Daru $GITHUB_REF_NAME - unsigned QA candidate" --notes "Unsigned test candidate. No production distribution or automatic update."
+  signed-release:
+    if: vars.DARU_SIGNED_RELEASE_ENABLED == 'true'
+    environment: release-review
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - name: Check version and signing configuration
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          test "$GITHUB_REF_NAME" = "v$(node -p 'require("./package.json").version')"
+          test -n "$CSC_LINK" && test -n "$CSC_KEY_PASSWORD" && test -n "$APPLE_API_KEY" && test -n "$APPLE_API_KEY_ID" && test -n "$APPLE_API_ISSUER"
+      - name: Build signed and notarized Mac distribution
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_KEY_CONTENT: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          umask 077
+          export APPLE_API_KEY="$RUNNER_TEMP/daru-notary.p8"
+          trap 'rm -f "$APPLE_API_KEY"' EXIT
+          printf '%s' "$APPLE_KEY_CONTENT" > "$APPLE_API_KEY"
+          unset APPLE_KEY_CONTENT
+          npm run build
+          npx electron-builder --config electron-builder.signed.cjs --publish never
+          APP_BUNDLE="$(find release -name Daru.app -type d -print -quit)"
+          test -n "$APP_BUNDLE"
+          codesign --verify --deep --strict "$APP_BUNDLE"
+          xcrun stapler validate "$APP_BUNDLE"
+          test -s release/latest-mac.yml
+      - name: Draft signed release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" release/*.dmg release/*.zip release/latest-mac.yml --verify-tag --draft --title "Daru $GITHUB_REF_NAME" --notes-file RELEASE-NOTES.md
