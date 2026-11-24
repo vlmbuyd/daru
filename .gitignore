@@ -10,3 +10,7 @@ release/
 *.pfx
 records.json*
 shortcut.json*
+
+# Local model registration and encrypted credentials
+chatgpt-host
+chatgpt-session.enc*
